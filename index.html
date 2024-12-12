@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Formatter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.5/cdn.min.js" defer></script>
+    <script src="https://unpkg.com/prettier@2.8.8/standalone.js"></script>
+    <script src="https://unpkg.com/prettier@2.8.8/parser-html.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ace.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/theme-tomorrow_night.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/mode-html.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .editor {
+            width: 100%;
+            height: calc(100vh - 180px);
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            border-radius: 8px;
+        }
+        
+        .custom-shadow {
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .editor-container {
+            background-color: #111111;
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+        
+        .btn-action {
+            transition: all 0.2s ease;
+        }
+        
+        .btn-action:hover {
+            transform: translateY(-1px);
+        }
+        
+        .stats-border {
+            border: 1px solid #333;
+        }
+
+        .modal {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="bg-black text-white min-h-screen" x-data="formatter()">
+    <!-- Settings Modal -->
+    <div class="fixed inset-0 flex items-center justify-center modal z-50" x-show="showSettings" x-cloak>
+        <div class="bg-gray-900 p-6 rounded-lg w-96 border border-gray-800">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Settings</h2>
+                <button @click="showSettings = false" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Tab Width</label>
+                    <select x-model="tabWidth" class="w-full bg-black border border-gray-800 rounded p-2">
+                        <option value="2">2 spaces</option>
+                        <option value="4">4 spaces</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">Print Width</label>
+                    <input type="number" x-model="printWidth" class="w-full bg-black border border-gray-800 rounded p-2">
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="singleQuote" x-model="singleQuote">
+                    <label for="singleQuote" class="text-sm text-gray-400">Use single quotes</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shortcuts Modal -->
+    <div class="fixed inset-0 flex items-center justify-center modal z-50" x-show="showShortcuts" x-cloak>
+        <div class="bg-gray-900 p-6 rounded-lg w-96 border border-gray-800">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Keyboard Shortcuts</h2>
+                <button @click="showShortcuts = false" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="space-y-3">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Format Code</span>
+                    <kbd class="px-2 py-1 bg-black rounded text-sm">Ctrl + Enter</kbd>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Copy Code</span>
+                    <kbd class="px-2 py-1 bg-black rounded text-sm">Ctrl + C</kbd>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Clear Input</span>
+                    <kbd class="px-2 py-1 bg-black rounded text-sm">Ctrl + L</kbd>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <nav class="border-b border-gray-800 bg-black">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <i class="fas fa-code text-2xl text-white"></i>
+                    <h1 class="text-xl font-semibold">Format.io</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button @click="showShortcuts = true" class="text-gray-400 hover:text-white transition-colors">
+                        <i class="fas fa-keyboard mr-2"></i>Shortcuts
+                    </button>
+                    <button @click="showSettings = true" class="text-gray-400 hover:text-white transition-colors">
+                        <i class="fas fa-gear mr-2"></i>Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-6 py-8">
+        <!-- Stats Bar -->
+        <div class="grid grid-cols-3 gap-4 mb-8">
+            <div class="stats-border bg-black p-4 rounded-lg">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-file-code text-gray-400"></i>
+                    <div>
+                        <h3 class="text-sm text-gray-400">Characters</h3>
+                        <p class="text-xl font-semibold" x-text="characterCount">0</p>
+                    </div>
+                </div>
+            </div>
+            <div class="stats-border bg-black p-4 rounded-lg">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-code text-gray-400"></i>
+                    <div>
+                        <h3 class="text-sm text-gray-400">Elements</h3>
+                        <p class="text-xl font-semibold" x-text="elementCount">0</p>
+                    </div>
+                </div>
+            </div>
+            <div class="stats-border bg-black p-4 rounded-lg">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-indent text-gray-400"></i>
+                    <div>
+                        <h3 class="text-sm text-gray-400">Indentation</h3>
+                        <p class="text-xl font-semibold" x-text="tabWidth + ' spaces'">2 spaces</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Input Section -->
+            <div class="editor-container p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-code text-gray-400"></i>
+                        <h2 class="text-gray-200 font-medium">Input HTML</h2>
+                    </div>
+                    <button 
+                        @click="formatCode()" 
+                        class="btn-action px-4 py-2 bg-white text-black rounded-md hover:bg-gray-100 font-medium flex items-center space-x-2">
+                        <i class="fas fa-wand-magic-sparkles"></i>
+                        <span>Format</span>
+                    </button>
+                </div>
+                <div id="editor-input" class="editor"></div>
+            </div>
+
+            <!-- Output Section -->
+            <div class="editor-container p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-check-circle text-gray-400"></i>
+                        <h2 class="text-gray-200 font-medium">Formatted Output</h2>
+                    </div>
+                    <button 
+                        @click="copyToClipboard()" 
+                        class="btn-action px-4 py-2 border border-gray-700 text-white rounded-md hover:bg-gray-900 font-medium flex items-center space-x-2">
+                        <i class="fas fa-copy mr-2"></i>
+                        <span x-text="copyText">Copy to Clipboard</span>
+                    </button>
+                </div>
+                <div id="editor-output" class="editor"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Wait for Prettier and its plugins to load
+        window.addEventListener('load', () => {
+            if (typeof prettier === 'undefined' || typeof prettierPlugins === 'undefined') {
+                console.error('Prettier or its plugins failed to load');
+                return;
+            }
+        });
+
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('formatter', () => ({
+                editorInput: null,
+                editorOutput: null,
+                copyText: 'Copy to Clipboard',
+                characterCount: 0,
+                elementCount: 0,
+                showSettings: false,
+                showShortcuts: false,
+                tabWidth: 2,
+                printWidth: 80,
+                singleQuote: false,
+
+                init() {
+                    this.initializeEditors();
+                    this.setupKeyboardShortcuts();
+                    this.setSampleCode();
+                },
+
+                initializeEditors() {
+                    // Initialize Ace editor for input
+                    this.editorInput = ace.edit("editor-input");
+                    this.editorInput.setTheme("ace/theme/tomorrow_night");
+                    this.editorInput.session.setMode("ace/mode/html");
+                    this.editorInput.setOption("showPrintMargin", false);
+                    this.editorInput.setOption("wrap", true);
+                    this.editorInput.on('change', () => this.updateStats());
+
+                    // Initialize Ace editor for output
+                    this.editorOutput = ace.edit("editor-output");
+                    this.editorOutput.setTheme("ace/theme/tomorrow_night");
+                    this.editorOutput.session.setMode("ace/mode/html");
+                    this.editorOutput.setOption("showPrintMargin", false);
+                    this.editorOutput.setOption("wrap", true);
+                    this.editorOutput.setReadOnly(true);
+                },
+
+                setupKeyboardShortcuts() {
+                    document.addEventListener('keydown', (e) => {
+                        if (e.ctrlKey && e.key === 'Enter') {
+                            e.preventDefault();
+                            this.formatCode();
+                        }
+                        if (e.ctrlKey && e.key === 'l') {
+                            e.preventDefault();
+                            this.editorInput.setValue('');
+                        }
+                    });
+                },
+
+                setSampleCode() {
+                    const sampleHTML = `<div class="container">
+    <h1>Hello World</h1>
+    <p>This is some sample HTML code that needs formatting.</p>
+</div>`;
+                    this.editorInput.setValue(sampleHTML);
+                    this.updateStats();
+                },
+
+                updateStats() {
+                    const code = this.editorInput.getValue();
+                    this.characterCount = code.length;
+                    this.elementCount = (code.match(/<[^/][^>]*>/g) || []).length;
+                },
+
+                formatCode() {
+                    if (typeof prettier === 'undefined' || typeof prettierPlugins === 'undefined') {
+                        this.editorOutput.setValue('Error: Prettier is not loaded. Please refresh the page.');
+                        return;
+                    }
+
+                    try {
+                        const inputCode = this.editorInput.getValue();
+                        const formattedCode = prettier.format(inputCode, {
+                            parser: "html",
+                            plugins: prettierPlugins,
+                            printWidth: parseInt(this.printWidth),
+                            tabWidth: parseInt(this.tabWidth),
+                            useTabs: false,
+                            singleQuote: this.singleQuote,
+                            bracketSameLine: false
+                        });
+                        this.editorOutput.setValue(formattedCode);
+                        this.editorOutput.clearSelection();
+                    } catch (error) {
+                        this.editorOutput.setValue('Error: ' + error.message);
+                    }
+                },
+
+                async copyToClipboard() {
+                    const code = this.editorOutput.getValue();
+                    try {
+                        await navigator.clipboard.writeText(code);
+                        this.copyText = 'Copied!';
+                        setTimeout(() => {
+                            this.copyText = 'Copy to Clipboard';
+                        }, 2000);
+                    } catch (err) {
+                        this.copyText = 'Failed to copy';
+                        setTimeout(() => {
+                            this.copyText = 'Copy to Clipboard';
+                        }, 2000);
+                    }
+                }
+            }));
+        });
+    </script>
+</body>
+</html>
